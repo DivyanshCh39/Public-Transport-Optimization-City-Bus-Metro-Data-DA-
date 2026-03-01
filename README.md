@@ -51,6 +51,10 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 
 ---
 
+## 🛠️ Dataset
+Due to size limits, the dataset is hosted externally:
+[Download here](https://mega.nz/folder/q9JmhaoR#jcBaZbfuiyZSJfEG02jp3g)
+
 ## 📜 License
 This project is licensed under the MIT License.
 
