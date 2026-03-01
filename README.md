@@ -53,3 +53,7 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 
 ## 📜 License
 This project is licensed under the MIT License.
+
+<img width="1910" height="838" alt="Dashboard1" src="https://github.com/user-attachments/assets/7d429793-0d23-47a7-a76d-5d4d7819e9c5" />
+<img width="1898" height="890" alt="Dashboard2" src="https://github.com/user-attachments/assets/50e600b0-4783-436e-837b-d8f7c3763ced" />
+
