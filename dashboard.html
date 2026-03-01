@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TransitIQ — Public Transport Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg: #0a0d14;
+    --surface: #111622;
+    --surface2: #171e2e;
+    --border: rgba(255,255,255,0.07);
+    --text: #e8edf5;
+    --muted: #6b7a99;
+    --accent: #00e5ff;
+    --accent2: #7c3aed;
+    --green: #00d97e;
+    --orange: #ff7c3a;
+    --red: #ff3a5c;
+    --metro: #a78bfa;
+    --bus: #34d399;
+    --grid: rgba(255,255,255,0.04);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Ambient background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -30%;
+    left: -20%;
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(ellipse, rgba(124,58,237,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    bottom: -20%;
+    right: -10%;
+    width: 50%;
+    height: 50%;
+    background: radial-gradient(ellipse, rgba(0,229,255,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Header */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,13,20,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 64px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: white;
+  }
+
+  .logo-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .logo-text span { color: var(--accent); }
+
+  .header-meta {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0,217,126,0.1);
+    border: 1px solid rgba(0,217,126,0.3);
+    color: var(--green);
+    font-size: 0.65rem;
+    font-family: 'Space Mono', monospace;
+    padding: 3px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.05em;
+  }
+
+  .live-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* Navigation tabs */
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 2rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nav-tabs::-webkit-scrollbar { display: none; }
+
+  .tab-btn {
+    padding: 14px 20px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    position: relative;
+    transition: color 0.2s;
+  }
+
+  .tab-btn.active {
+    color: var(--accent);
+  }
+
+  .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 2px 2px 0 0;
+  }
+
+  .tab-btn:hover { color: var(--text); }
+
+  /* Main content */
+  .main {
+    padding: 2rem;
+    max-width: 1600px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* KPI Cards */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    animation: fadeIn 0.5s ease both;
+  }
+
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent-color, var(--accent));
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .kpi-label {
+    font-size: 0.7rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+
+  .kpi-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .kpi-sub {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  .kpi-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+  }
+
+  .badge-green { background: rgba(0,217,126,0.15); color: var(--green); }
+  .badge-orange { background: rgba(255,124,58,0.15); color: var(--orange); }
+  .badge-red { background: rgba(255,58,92,0.15); color: var(--red); }
+  .badge-accent { background: rgba(0,229,255,0.15); color: var(--accent); }
+
+  /* Chart sections */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .section-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text);
+  }
+
+  .section-sub {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    animation: fadeIn 0.6s ease both;
+  }
+
+  .col-8 { grid-column: span 8; }
+  .col-6 { grid-column: span 6; }
+  .col-4 { grid-column: span 4; }
+  .col-12 { grid-column: span 12; }
+
+  @media (max-width: 1100px) {
+    .col-8, .col-6, .col-4 { grid-column: span 12; }
+  }
+
+  .chart-wrapper {
+    position: relative;
+    width: 100%;
+  }
+
+  /* Route efficiency table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  .data-table th {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    vertical-align: middle;
+  }
+
+  .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .data-table tr:last-child td { border-bottom: none; }
+
+  /* Progress bar for load factor */
+  .load-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .bar-track {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 1s ease;
+  }
+
+  .bar-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    min-width: 38px;
+    text-align: right;
+  }
+
+  /* Type badge */
+  .type-pill {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+  }
+
+  .pill-metro { background: rgba(167,139,250,0.15); color: var(--metro); }
+  .pill-bus { background: rgba(52,211,153,0.15); color: var(--bus); }
+
+  /* Recommendations cards */
+  .reco-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+  }
+
+  .reco-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    border-left: 3px solid var(--accent);
+  }
+
+  .reco-card.high { border-left-color: var(--red); }
+  .reco-card.medium { border-left-color: var(--orange); }
+  .reco-card.low { border-left-color: var(--green); }
+
+  .reco-priority {
+    font-size: 0.6rem;
+    font-family: 'Space Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+
+  .priority-high { color: var(--red); }
+  .priority-medium { color: var(--orange); }
+  .priority-low { color: var(--green); }
+
+  .reco-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .reco-route {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  .reco-detail {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* GPS Map placeholder */
+  .map-container {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .map-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,0.02) 40px, rgba(255,255,255,0.02) 41px),
+      repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,0.02) 40px, rgba(255,255,255,0.02) 41px);
+  }
+
+  .map-routes {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* Animated route lines on map */
+  .route-line {
+    stroke-dasharray: 10 5;
+    stroke-dashoffset: 0;
+    animation: dash 3s linear infinite;
+  }
+
+  @keyframes dash {
+    to { stroke-dashoffset: -300; }
+  }
+
+  .pulse-dot {
+    animation: pulseDot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulseDot {
+    0%, 100% { r: 4; opacity: 1; }
+    50% { r: 8; opacity: 0.4; }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">TQ</div>
+    <div>
+      <div class="logo-text">Transit<span>IQ</span></div>
+      <div style="font-size:0.65rem;color:var(--muted);font-family:'Space Mono',monospace;">PUBLIC TRANSPORT ANALYTICS</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:1rem;">
+    <div class="live-badge">LIVE SIMULATION</div>
+    <div class="header-meta">
+      Dataset: Jan–Mar 2024<br>
+      10 Routes · 518,050 Journeys
+    </div>
+  </div>
+</header>
+
+<nav class="nav-tabs">
+  <button class="tab-btn active" onclick="showTab('overview')">📊 Overview</button>
+  <button class="tab-btn" onclick="showTab('routes')">🗺 Route Efficiency</button>
+  <button class="tab-btn" onclick="showTab('passengers')">👥 Passenger Trends</button>
+  <button class="tab-btn" onclick="showTab('schedule')">⏱ Schedule Optimization</button>
+  <button class="tab-btn" onclick="showTab('gps')">📡 GPS Heatmap</button>
+</nav>
+
+<main class="main">
+
+  <!-- ══════════════════ OVERVIEW TAB ══════════════════ -->
+  <div id="tab-overview" class="tab-content active">
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="--accent-color: var(--accent)">
+        <div class="kpi-label">Total Routes</div>
+        <div class="kpi-value">10</div>
+        <div class="kpi-sub">7 Bus · 3 Metro <span class="kpi-badge badge-accent">Active</span></div>
+      </div>
+      <div class="kpi-card" style="--accent-color: var(--metro)">
+        <div class="kpi-label">Total Trips</div>
+        <div class="kpi-value">40.2K</div>
+        <div class="kpi-sub">Over 90 days <span class="kpi-badge badge-green">+4.2%</span></div>
+      </div>
+      <div class="kpi-card" style="--accent-color: var(--green)">
+        <div class="kpi-label">Passengers</div>
+        <div class="kpi-value">518K</div>
+        <div class="kpi-sub">Unique journeys <span class="kpi-badge badge-green">+6.1%</span></div>
+      </div>
+      <div class="kpi-card" style="--accent-color: var(--orange)">
+        <div class="kpi-label">Total Revenue</div>
+        <div class="kpi-value">₹15.6M</div>
+        <div class="kpi-sub">Jan–Mar 2024 <span class="kpi-badge badge-green">+2.8%</span></div>
+      </div>
+      <div class="kpi-card" style="--accent-color: var(--accent2)">
+        <div class="kpi-label">Avg Load Factor</div>
+        <div class="kpi-value">36.4%</div>
+        <div class="kpi-sub">System-wide <span class="kpi-badge badge-orange">Below 50%</span></div>
+      </div>
+      <div class="kpi-card" style="--accent-color: var(--red)">
+        <div class="kpi-label">Avg Delay</div>
+        <div class="kpi-value">0.32m</div>
+        <div class="kpi-sub">Per stop <span class="kpi-badge badge-green">Low</span></div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card col-8">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Daily Passenger Volume</div>
+            <div class="section-sub">90-day rolling trend — Weekday vs Weekend</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="dailyChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-4">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Revenue Share</div>
+            <div class="section-sub">By route type</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="revenueDonut"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-6">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Peak Hours Analysis</div>
+            <div class="section-sub">Total passenger journeys by hour of day</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:220px">
+          <canvas id="peakHoursChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-6">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Payment Methods</div>
+            <div class="section-sub">Fare collection breakdown</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:220px">
+          <canvas id="paymentChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ ROUTES TAB ══════════════════ -->
+  <div id="tab-routes" class="tab-content">
+
+    <div class="charts-grid">
+      <div class="chart-card col-12">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Route Efficiency Score</div>
+            <div class="section-sub">Composite score based on load factor (40%), punctuality (30%), speed (30%)</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:280px">
+          <canvas id="efficiencyChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-6">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Avg Load Factor by Route</div>
+            <div class="section-sub">% of capacity utilized</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="loadFactorChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-6">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Revenue per Route</div>
+            <div class="section-sub">90-day total (₹)</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="revenueByRoute"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-12">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Route Performance Table</div>
+            <div class="section-sub">Detailed breakdown — sorted by efficiency score</div>
+          </div>
+        </div>
+        <table class="data-table" id="routeTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ PASSENGER TRENDS TAB ══════════════════ -->
+  <div id="tab-passengers" class="tab-content">
+    <div class="charts-grid">
+      <div class="chart-card col-8">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Passenger Load Over 24h</div>
+            <div class="section-sub">Average load factor by hour — Bus vs Metro</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="loadTrendChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-4">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Passenger Types</div>
+            <div class="section-sub">Journey count distribution</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="ptypeChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card col-12">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Weekday vs Weekend Pattern</div>
+            <div class="section-sub">Journey distribution by hour of day</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:240px">
+          <canvas id="weekdayChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ SCHEDULE OPTIMIZATION TAB ══════════════════ -->
+  <div id="tab-schedule" class="tab-content">
+    <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); max-width: 600px; margin-bottom: 1.5rem;">
+      <div class="kpi-card" style="--accent-color: var(--red)">
+        <div class="kpi-label">High Priority</div>
+        <div class="kpi-value" style="font-size:1.4rem;color:var(--red)">2</div>
+        <div class="kpi-sub">Increase frequency</div>
+      </div>
+      <div class="kpi-card" style="--accent-color: var(--orange)">
+        <div class="kpi-label">Medium Priority</div>
+        <div class="kpi-value" style="font-size:1.4rem;color:var(--orange)">10</div>
+        <div class="kpi-sub">Reduce frequency</div>
+      </div>
+      <div class="kpi-card" style="--accent-color: var(--green)">
+        <div class="kpi-label">Underutilized</div>
+        <div class="kpi-value" style="font-size:1.4rem;color:var(--green)">1</div>
+        <div class="kpi-sub">Route R07</div>
+      </div>
+    </div>
+
+    <div id="recoCards" class="reco-grid"></div>
+  </div>
+
+  <!-- ══════════════════ GPS HEATMAP TAB ══════════════════ -->
+  <div id="tab-gps" class="tab-content">
+    <div class="chart-card col-12" style="margin-bottom:1rem;">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Live Route Network Map</div>
+          <div class="section-sub">Animated GPS track visualization — simulated city transit network</div>
+        </div>
+        <div style="display:flex;gap:1rem;align-items:center;font-size:0.72rem;color:var(--muted);">
+          <span>● <span style="color:var(--metro)">Metro</span></span>
+          <span>● <span style="color:var(--bus)">Bus</span></span>
+          <span style="color:var(--orange)">● Night</span>
+        </div>
+      </div>
+      <div class="map-container">
+        <div class="map-bg"></div>
+        <svg class="map-routes" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
+          <!-- Metro Line 1 (Red) -->
+          <polyline class="route-line" points="60,200 140,170 220,150 300,200 380,180 460,200 540,220 620,190 720,200"
+            fill="none" stroke="#a78bfa" stroke-width="2.5" opacity="0.8"/>
+          <!-- Metro Line 2 (Blue) -->
+          <polyline class="route-line" points="80,340 150,300 220,260 300,220 380,200 460,170 540,140 620,160 720,130"
+            fill="none" stroke="#60a5fa" stroke-width="2.5" opacity="0.8" style="animation-delay:1s"/>
+          <!-- Metro Line 3 (Green) -->
+          <polyline class="route-line" points="100,60 170,100 240,130 320,160 400,200 480,240 560,280 640,310 740,330"
+            fill="none" stroke="#34d399" stroke-width="2.5" opacity="0.8" style="animation-delay:2s"/>
+          <!-- Bus Route R01 -->
+          <polyline class="route-line" points="400,200 440,170 490,150 540,130 590,110 640,95 700,80 750,60"
+            fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.6" stroke-dasharray="6 4"/>
+          <!-- Bus Route R02 -->
+          <polyline class="route-line" points="400,200 350,180 300,160 250,180 200,200 160,220 120,250 80,260"
+            fill="none" stroke="#f87171" stroke-width="1.5" opacity="0.6" stroke-dasharray="6 4" style="animation-delay:0.5s"/>
+          <!-- Bus Route R07 Night -->
+          <polyline class="route-line" points="400,200 430,230 470,260 510,290 550,310 600,330 650,350"
+            fill="none" stroke="#ff7c3a" stroke-width="1.5" opacity="0.5" stroke-dasharray="4 8" style="animation-delay:1.5s"/>
+          <!-- Station dots -->
+          <g fill="var(--text)" opacity="0.9">
+            <circle cx="400" cy="200" r="6" fill="#00e5ff"/>
+            <circle cx="220" cy="150" r="4"/>
+            <circle cx="300" cy="200" r="4"/>
+            <circle cx="460" cy="200" r="4"/>
+            <circle cx="620" cy="190" r="4"/>
+            <circle cx="540" cy="140" r="4"/>
+            <circle cx="320" cy="160" r="4"/>
+            <circle cx="480" cy="240" r="4"/>
+          </g>
+          <!-- Animated vehicle positions -->
+          <circle class="pulse-dot" cx="300" cy="200" r="5" fill="#a78bfa" opacity="0.9"/>
+          <circle class="pulse-dot" cx="460" cy="170" r="5" fill="#60a5fa" opacity="0.9" style="animation-delay:0.7s"/>
+          <circle class="pulse-dot" cx="400" cy="200" r="6" fill="#00e5ff" opacity="1"/>
+          <!-- Central label -->
+          <text x="395" y="190" fill="#00e5ff" font-size="9" font-family="Space Mono" text-anchor="middle">CENTRAL</text>
+          <text x="395" y="218" fill="#666" font-size="7" font-family="Space Mono" text-anchor="middle">HUB</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card col-6">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Stop-Level Boarding Density</div>
+            <div class="section-sub">Top 10 busiest boarding stops (ticketing data)</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="boardingStopsChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card col-6">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Average Speed by Route</div>
+            <div class="section-sub">GPS-derived avg km/h per route</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:260px">
+          <canvas id="speedChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─── Embedded Dataset ──────────────────────────────────────────────────────────
+const DATA = {"peak_hours": [{"hour": 5, "count": 12567}, {"hour": 6, "count": 21178}, {"hour": 7, "count": 33533}, {"hour": 8, "count": 42194}, {"hour": 9, "count": 33686}, {"hour": 10, "count": 25177}, {"hour": 11, "count": 29513}, {"hour": 12, "count": 33492}, {"hour": 13, "count": 41772}, {"hour": 14, "count": 29021}, {"hour": 15, "count": 20789}, {"hour": 16, "count": 16945}, {"hour": 17, "count": 16773}, {"hour": 18, "count": 20796}, {"hour": 19, "count": 33305}, {"hour": 20, "count": 37705}, {"hour": 21, "count": 36074}, {"hour": 22, "count": 27858}, {"hour": 23, "count": 5672}], "route_efficiency": [{"route_id": "R01", "avg_load": 0.316, "avg_delay": 0.317, "trips": 3225, "revenue": 714849, "passengers": 33000, "route_name": "Central \u2013 Airport Express", "route_type": "Bus", "efficiency": 71.7}, {"route_id": "R02", "avg_load": 0.321, "avg_delay": 0.316, "trips": 3225, "revenue": 773173, "passengers": 33000, "route_name": "City Loop (North)", "route_type": "Bus", "efficiency": 71.9}, {"route_id": "R03", "avg_load": 0.317, "avg_delay": 0.309, "trips": 3225, "revenue": 754656, "passengers": 33000, "route_name": "City Loop (South)", "route_type": "Bus", "efficiency": 71.7}, {"route_id": "R04", "avg_load": 0.395, "avg_delay": 0.319, "trips": 6700, "revenue": 3579294, "passengers": 99000, "route_name": "Metro Line 1 (Red)", "route_type": "Metro", "efficiency": 74.9}, {"route_id": "R05", "avg_load": 0.391, "avg_delay": 0.316, "trips": 6700, "revenue": 3508062, "passengers": 99000, "route_name": "Metro Line 2 (Blue)", "route_type": "Metro", "efficiency": 74.7}, {"route_id": "R06", "avg_load": 0.349, "avg_delay": 0.319, "trips": 3225, "revenue": 636126, "passengers": 33000, "route_name": "University Shuttle", "route_type": "Bus", "efficiency": 73.0}, {"route_id": "R07", "avg_load": 0.239, "avg_delay": 0.316, "trips": 3225, "revenue": 572305, "passengers": 28025, "route_name": "Industrial Zone Link", "route_type": "Bus", "efficiency": 68.6}, {"route_id": "R08", "avg_load": 0.321, "avg_delay": 0.309, "trips": 3225, "revenue": 734310, "passengers": 33000, "route_name": "Suburban Express East", "route_type": "Bus", "efficiency": 71.9}, {"route_id": "R09", "avg_load": 0.392, "avg_delay": 0.318, "trips": 6700, "revenue": 3631648, "passengers": 99000, "route_name": "Metro Line 3 (Green)", "route_type": "Metro", "efficiency": 74.7}, {"route_id": "R10", "avg_load": 0.314, "avg_delay": 0.322, "trips": 720, "revenue": 664998, "passengers": 28025, "route_name": "Night Owl Service", "route_type": "Bus", "efficiency": 71.6}], "load_trend": [{"hour": 5, "route_type": "Bus", "load_factor": 0.1435}, {"hour": 5, "route_type": "Metro", "load_factor": 0.1485}, {"hour": 6, "route_type": "Bus", "load_factor": 0.2164}, {"hour": 6, "route_type": "Metro", "load_factor": 0.1478}, {"hour": 7, "route_type": "Bus", "load_factor": 0.5411}, {"hour": 7, "route_type": "Metro", "load_factor": 0.6059}, {"hour": 8, "route_type": "Bus", "load_factor": 0.605}, {"hour": 8, "route_type": "Metro", "load_factor": 0.7419}, {"hour": 9, "route_type": "Bus", "load_factor": 0.5446}, {"hour": 9, "route_type": "Metro", "load_factor": 0.6956}, {"hour": 10, "route_type": "Bus", "load_factor": 0.1874}, {"hour": 10, "route_type": "Metro", "load_factor": 0.2499}, {"hour": 11, "route_type": "Bus", "load_factor": 0.2061}, {"hour": 11, "route_type": "Metro", "load_factor": 0.2544}, {"hour": 12, "route_type": "Bus", "load_factor": 0.4078}, {"hour": 12, "route_type": "Metro", "load_factor": 0.4631}, {"hour": 13, "route_type": "Bus", "load_factor": 0.1831}, {"hour": 13, "route_type": "Metro", "load_factor": 0.148}, {"hour": 14, "route_type": "Bus", "load_factor": 0.2083}, {"hour": 14, "route_type": "Metro", "load_factor": 0.2737}, {"hour": 15, "route_type": "Bus", "load_factor": 0.198}, {"hour": 15, "route_type": "Metro", "load_factor": 0.268}, {"hour": 16, "route_type": "Bus", "load_factor": 0.2061}, {"hour": 16, "route_type": "Metro", "load_factor": 0.1492}, {"hour": 17, "route_type": "Bus", "load_factor": 0.6288}, {"hour": 17, "route_type": "Metro", "load_factor": 0.6611}, {"hour": 18, "route_type": "Bus", "load_factor": 0.583}, {"hour": 18, "route_type": "Metro", "load_factor": 0.7176}, {"hour": 19, "route_type": "Bus", "load_factor": 0.1422}, {"hour": 19, "route_type": "Metro", "load_factor": 0.6642}, {"hour": 20, "route_type": "Bus", "load_factor": 0.1455}, {"hour": 20, "route_type": "Metro", "load_factor": 0.1486}, {"hour": 21, "route_type": "Bus", "load_factor": 0.1441}, {"hour": 21, "route_type": "Metro", "load_factor": 0.1524}, {"hour": 22, "route_type": "Bus", "load_factor": 0.2183}, {"hour": 22, "route_type": "Metro", "load_factor": 0.1483}, {"hour": 23, "route_type": "Bus", "load_factor": 0.5852}], "daily": [{"date": "2024-01-01", "passengers": 6280, "revenue": 190151}, {"date": "2024-01-06", "passengers": 4394, "revenue": 131945}, {"date": "2024-01-08", "passengers": 6280, "revenue": 188586}, {"date": "2024-01-13", "passengers": 4394, "revenue": 132539}, {"date": "2024-01-15", "passengers": 6280, "revenue": 188640}, {"date": "2024-01-20", "passengers": 4394, "revenue": 130311}, {"date": "2024-01-22", "passengers": 6280, "revenue": 188438}, {"date": "2024-01-27", "passengers": 4394, "revenue": 133261}, {"date": "2024-01-29", "passengers": 6280, "revenue": 188068}, {"date": "2024-02-03", "passengers": 4394, "revenue": 132317}, {"date": "2024-02-05", "passengers": 6280, "revenue": 187710}, {"date": "2024-02-10", "passengers": 4394, "revenue": 131831}, {"date": "2024-02-12", "passengers": 6280, "revenue": 188194}, {"date": "2024-02-17", "passengers": 4394, "revenue": 132199}, {"date": "2024-02-19", "passengers": 6280, "revenue": 185292}, {"date": "2024-02-24", "passengers": 4394, "revenue": 132714}, {"date": "2024-02-26", "passengers": 6280, "revenue": 189549}, {"date": "2024-03-02", "passengers": 4394, "revenue": 132445}, {"date": "2024-03-04", "passengers": 6280, "revenue": 190528}, {"date": "2024-03-09", "passengers": 4394, "revenue": 134809}, {"date": "2024-03-11", "passengers": 6280, "revenue": 189725}, {"date": "2024-03-16", "passengers": 4394, "revenue": 131642}, {"date": "2024-03-18", "passengers": 6280, "revenue": 189398}, {"date": "2024-03-23", "passengers": 4394, "revenue": 130864}, {"date": "2024-03-25", "passengers": 6280, "revenue": 188264}, {"date": "2024-03-30", "passengers": 4394, "revenue": 131226}], "passenger_type": [{"passenger_type": "Adult", "count": 310643, "revenue": 11214314}, {"passenger_type": "Child", "count": 25934, "revenue": 462467}, {"passenger_type": "Employee Pass", "count": 25756, "revenue": 0}, {"passenger_type": "Senior", "count": 51435, "revenue": 1107504}, {"passenger_type": "Student", "count": 104282, "revenue": 2785136}], "payment": [{"payment_method": "Cash", "count": 128854}, {"payment_method": "Mobile App", "count": 103189}, {"payment_method": "QR Code", "count": 52089}, {"payment_method": "Smart Card", "count": 233918}], "weekday_pattern": [{"hour": 5, "is_weekend": false, "count": 9947}, {"hour": 5, "is_weekend": true, "count": 2620}, {"hour": 6, "is_weekend": false, "count": 16638}, {"hour": 6, "is_weekend": true, "count": 4540}, {"hour": 7, "is_weekend": false, "count": 26480}, {"hour": 7, "is_weekend": true, "count": 7053}, {"hour": 8, "is_weekend": false, "count": 33454}, {"hour": 8, "is_weekend": true, "count": 8740}, {"hour": 9, "is_weekend": false, "count": 26530}, {"hour": 9, "is_weekend": true, "count": 7156}, {"hour": 10, "is_weekend": false, "count": 19785}, {"hour": 10, "is_weekend": true, "count": 5392}, {"hour": 11, "is_weekend": false, "count": 23249}, {"hour": 11, "is_weekend": true, "count": 6264}, {"hour": 12, "is_weekend": false, "count": 26389}, {"hour": 12, "is_weekend": true, "count": 7103}, {"hour": 13, "is_weekend": false, "count": 32768}, {"hour": 13, "is_weekend": true, "count": 9004}, {"hour": 14, "is_weekend": false, "count": 22859}, {"hour": 14, "is_weekend": true, "count": 6162}, {"hour": 15, "is_weekend": false, "count": 16324}, {"hour": 15, "is_weekend": true, "count": 4465}, {"hour": 16, "is_weekend": false, "count": 13261}, {"hour": 16, "is_weekend": true, "count": 3684}, {"hour": 17, "is_weekend": false, "count": 13265}, {"hour": 17, "is_weekend": true, "count": 3508}, {"hour": 18, "is_weekend": false, "count": 16479}, {"hour": 18, "is_weekend": true, "count": 4317}, {"hour": 19, "is_weekend": false, "count": 26248}, {"hour": 19, "is_weekend": true, "count": 7057}, {"hour": 20, "is_weekend": false, "count": 29619}, {"hour": 20, "is_weekend": true, "count": 8086}, {"hour": 21, "is_weekend": false, "count": 28452}, {"hour": 21, "is_weekend": true, "count": 7622}, {"hour": 22, "is_weekend": false, "count": 21954}, {"hour": 22, "is_weekend": true, "count": 5904}, {"hour": 23, "is_weekend": false, "count": 4499}, {"hour": 23, "is_weekend": true, "count": 1173}], "stats": {"total_routes": 10, "total_trips": 40170, "total_passengers": 518050, "total_revenue": 15569421, "avg_load_factor": 0.364, "avg_delay_min": 0.32, "metro_share_pct": 57.3, "bus_share_pct": 42.7}};
+
+// ─── Chart Defaults ────────────────────────────────────────────────────────────
+Chart.defaults.color = '#6b7a99';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+const gridOpts = {
+  color: 'rgba(255,255,255,0.04)',
+  drawTicks: false,
+};
+
+const makeGradient = (ctx, color1, color2) => {
+  const g = ctx.createLinearGradient(0, 0, 0, 300);
+  g.addColorStop(0, color1);
+  g.addColorStop(1, color2);
+  return g;
+};
+
+// ─── Tab Navigation ────────────────────────────────────────────────────────────
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ─── Daily Chart ──────────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('dailyChart').getContext('2d');
+  const labels = DATA.daily.map(d => d.date.slice(5));
+  const passengers = DATA.daily.map(d => d.passengers);
+  const revenue = DATA.daily.map(d => d.revenue / 1000);
+
+  const grad1 = ctx.createLinearGradient(0, 0, 0, 260);
+  grad1.addColorStop(0, 'rgba(0,229,255,0.3)');
+  grad1.addColorStop(1, 'rgba(0,229,255,0)');
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Passengers',
+        data: passengers,
+        borderColor: '#00e5ff',
+        backgroundColor: grad1,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 2,
+        borderWidth: 2,
+        yAxisID: 'y',
+      }, {
+        label: 'Revenue (K₹)',
+        data: revenue,
+        borderColor: '#a78bfa',
+        backgroundColor: 'transparent',
+        tension: 0.4,
+        pointRadius: 0,
+        borderWidth: 1.5,
+        borderDash: [4,3],
+        yAxisID: 'y2',
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 15, font: { size: 11 } } } },
+      scales: {
+        x: { grid: gridOpts, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+        y: { grid: gridOpts, ticks: { font: { size: 10 } } },
+        y2: { position: 'right', grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+})();
+
+// ─── Revenue Donut ────────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('revenueDonut').getContext('2d');
+  const metro = DATA.route_efficiency.filter(r => r.route_type === 'Metro').reduce((s, r) => s + r.revenue, 0);
+  const bus = DATA.route_efficiency.filter(r => r.route_type === 'Bus').reduce((s, r) => s + r.revenue, 0);
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Metro', 'Bus'],
+      datasets: [{ data: [metro, bus], backgroundColor: ['#7c3aed', '#00d97e'], borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } },
+        tooltip: { callbacks: { label: ctx => ` ₹${(ctx.parsed / 1000000).toFixed(2)}M` } }
+      },
+      cutout: '65%',
+    }
+  });
+})();
+
+// ─── Peak Hours Chart ─────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('peakHoursChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 220);
+  grad.addColorStop(0, 'rgba(0,229,255,0.6)');
+  grad.addColorStop(1, 'rgba(124,58,237,0.6)');
+
+  const isPeak = h => [8,9,13,20,21].includes(h);
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: DATA.peak_hours.map(d => d.hour + ':00'),
+      datasets: [{
+        label: 'Journeys',
+        data: DATA.peak_hours.map(d => d.count),
+        backgroundColor: DATA.peak_hours.map(d => isPeak(d.hour) ? '#00e5ff' : 'rgba(255,255,255,0.1)'),
+        borderRadius: 4,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { title: ctx => `Hour: ${ctx[0].label}`, label: ctx => ` ${ctx.parsed.y.toLocaleString()} journeys` } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { grid: gridOpts, ticks: { font: { size: 9 } } }
+      }
+    }
+  });
+})();
+
+// ─── Payment Methods Chart ────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('paymentChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: DATA.payment.map(d => d.payment_method),
+      datasets: [{
+        label: 'Transactions',
+        data: DATA.payment.map(d => d.count),
+        backgroundColor: ['#00d97e', '#fbbf24', '#a78bfa', '#00e5ff'],
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: gridOpts, ticks: { font: { size: 9 } } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+})();
+
+// ─── Efficiency Chart ─────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('efficiencyChart').getContext('2d');
+  const sorted = [...DATA.route_efficiency].sort((a,b) => b.efficiency - a.efficiency);
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(r => r.route_id),
+      datasets: [{
+        label: 'Efficiency Score',
+        data: sorted.map(r => r.efficiency),
+        backgroundColor: sorted.map(r => r.route_type === 'Metro' ? '#7c3aed' : '#00d97e'),
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { title: ctx => sorted[ctx[0].dataIndex].route_name, label: ctx => ` Score: ${ctx.parsed.y}` } }
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: gridOpts, min: 60, max: 80 }
+      }
+    }
+  });
+})();
+
+// ─── Load Factor per Route ────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('loadFactorChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: DATA.route_efficiency.map(r => r.route_id),
+      datasets: [{
+        label: 'Avg Load Factor',
+        data: DATA.route_efficiency.map(r => (r.avg_load * 100).toFixed(1)),
+        backgroundColor: 'rgba(0,229,255,0.15)',
+        borderColor: '#00e5ff',
+        pointBackgroundColor: '#00e5ff',
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        r: {
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          ticks: { display: false },
+          pointLabels: { font: { size: 11 }, color: '#e8edf5' },
+          min: 0, max: 60
+        }
+      }
+    }
+  });
+})();
+
+// ─── Revenue by Route ─────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('revenueByRoute').getContext('2d');
+  const sorted = [...DATA.route_efficiency].sort((a,b) => b.revenue - a.revenue);
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(r => r.route_id),
+      datasets: [{
+        label: 'Revenue ₹',
+        data: sorted.map(r => r.revenue),
+        backgroundColor: sorted.map(r => r.route_type === 'Metro' ? 'rgba(124,58,237,0.7)' : 'rgba(52,211,153,0.7)'),
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ₹${(ctx.parsed.y/1000).toFixed(0)}K` } }
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: gridOpts, ticks: { callback: v => '₹' + (v/1000000).toFixed(1) + 'M' } }
+      }
+    }
+  });
+})();
+
+// ─── Route Performance Table ──────────────────────────────────────────────────
+(function() {
+  const table = document.getElementById('routeTable');
+  const sorted = [...DATA.route_efficiency].sort((a,b) => b.efficiency - a.efficiency);
+  table.innerHTML = `
+    <thead><tr>
+      <th>Route</th>
+      <th>Type</th>
+      <th>Load Factor</th>
+      <th>Efficiency</th>
+      <th>Passengers</th>
+      <th>Revenue</th>
+      <th>Avg Delay</th>
+      <th>Status</th>
+    </tr></thead>
+    <tbody>${sorted.map(r => {
+      const lf = r.avg_load * 100;
+      const barColor = lf > 50 ? '#00d97e' : lf > 30 ? '#fbbf24' : '#ff3a5c';
+      const status = lf < 25 ? ['<span class="kpi-badge badge-red">Underutilized</span>', 'Reduce freq.'] :
+                     lf > 70 ? ['<span class="kpi-badge badge-accent">Overcrowded</span>', 'Increase freq.'] :
+                               ['<span class="kpi-badge badge-green">Normal</span>', 'Maintain'];
+      return `<tr>
+        <td><strong>${r.route_id}</strong><br><span style="font-size:0.72rem;color:var(--muted)">${r.route_name}</span></td>
+        <td><span class="type-pill ${r.route_type === 'Metro' ? 'pill-metro' : 'pill-bus'}">${r.route_type}</span></td>
+        <td>
+          <div class="load-bar">
+            <div class="bar-track"><div class="bar-fill" style="width:${lf}%;background:${barColor}"></div></div>
+            <div class="bar-text">${lf.toFixed(1)}%</div>
+          </div>
+        </td>
+        <td><span style="font-family:'Space Mono',monospace;font-size:0.85rem;color:${r.efficiency > 73 ? '#00d97e' : '#fbbf24'}">${r.efficiency}</span></td>
+        <td>${r.passengers.toLocaleString()}</td>
+        <td>₹${(r.revenue/1000).toFixed(0)}K</td>
+        <td style="color:${r.avg_delay > 2 ? 'var(--red)' : 'var(--muted)'}">${r.avg_delay.toFixed(2)}m</td>
+        <td>${status[0]}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  `;
+})();
+
+// ─── Load Trend Chart ─────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('loadTrendChart').getContext('2d');
+  const hours = [...new Set(DATA.load_trend.map(d => d.hour))].sort((a,b) => a-b);
+  const busData = hours.map(h => {
+    const r = DATA.load_trend.find(d => d.hour === h && d.route_type === 'Bus');
+    return r ? (r.load_factor * 100).toFixed(1) : null;
+  });
+  const metroData = hours.map(h => {
+    const r = DATA.load_trend.find(d => d.hour === h && d.route_type === 'Metro');
+    return r ? (r.load_factor * 100).toFixed(1) : null;
+  });
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: hours.map(h => h + ':00'),
+      datasets: [
+        {
+          label: 'Bus',
+          data: busData,
+          borderColor: '#34d399',
+          backgroundColor: 'rgba(52,211,153,0.1)',
+          fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 3
+        },
+        {
+          label: 'Metro',
+          data: metroData,
+          borderColor: '#a78bfa',
+          backgroundColor: 'rgba(167,139,250,0.1)',
+          fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 3
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 }, padding: 16 } } },
+      scales: {
+        x: { grid: gridOpts, ticks: { font: { size: 9 } } },
+        y: {
+          grid: gridOpts,
+          ticks: { callback: v => v + '%', font: { size: 10 } },
+          min: 0, max: 100
+        }
+      }
+    }
+  });
+})();
+
+// ─── Passenger Type Chart ─────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('ptypeChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: DATA.passenger_type.map(d => d.passenger_type),
+      datasets: [{ data: DATA.passenger_type.map(d => d.count),
+        backgroundColor: ['#00e5ff','#34d399','#fbbf24','#f87171','#a78bfa'],
+        borderWidth: 0, hoverOffset: 5
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { padding: 12, font: { size: 11 } } } },
+      cutout: '60%',
+    }
+  });
+})();
+
+// ─── Weekday vs Weekend ────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('weekdayChart').getContext('2d');
+  const hours = [...new Set(DATA.weekday_pattern.map(d => d.hour))].sort((a,b) => a-b);
+  const wdData = hours.map(h => DATA.weekday_pattern.find(d => d.hour === h && !d.is_weekend)?.count || 0);
+  const weData = hours.map(h => DATA.weekday_pattern.find(d => d.hour === h && d.is_weekend)?.count || 0);
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: hours.map(h => h + ':00'),
+      datasets: [
+        { label: 'Weekday', data: wdData, backgroundColor: 'rgba(0,229,255,0.7)', borderRadius: 3 },
+        { label: 'Weekend', data: weData, backgroundColor: 'rgba(251,191,36,0.7)', borderRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 }, padding: 16 } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { grid: gridOpts, stacked: false }
+      }
+    }
+  });
+})();
+
+// ─── Schedule Optimization Recommendations ───────────────────────────────────
+(function() {
+  const recommendations = [
+    { priority: 'High', type: '⬆ Increase Frequency', route: 'R06 – University Shuttle', hours: '08:00–10:00', reason: 'Load factor reaches 90% between 9–10 AM. Add 2 additional trips during morning slot.', saving: '+₹12K/month' },
+    { priority: 'High', type: '⬆ Increase Frequency', route: 'R09 – Metro Line 3 (Green)', hours: '07:00–09:00', reason: 'Metro load exceeds 74% at peak. Deploy additional 6-car sets on weekday mornings.', saving: '+₹28K/month' },
+    { priority: 'Medium', type: '⬇ Reduce Frequency', route: 'R07 – Industrial Zone Link', hours: '10:00–16:00', reason: 'Lowest load factor in network (23.9%). Consider 30-min headways midday instead of 15-min.', saving: '₹8K/month fuel saving' },
+    { priority: 'Medium', type: '⬇ Reduce Frequency', route: 'R01 – Central–Airport Express', hours: '05:00–06:00', reason: 'Very low ridership before 6 AM. Shift first departure to 06:15 AM.', saving: '₹4K/month' },
+    { priority: 'Medium', type: '🔀 Merge Trips', route: 'R02 + R03 – City Loops', hours: '20:00–22:00', reason: 'Both loops run <20% capacity after 8 PM. Consider interleaving as a single combined loop service.', saving: '₹15K/month' },
+    { priority: 'Low', type: '📡 Smart Card Push', route: 'All Bus Routes', hours: 'All hours', reason: 'Only 45% Smart Card penetration on buses vs 70%+ for Metro. Fare incentives could reduce cash handling cost.', saving: 'Operational efficiency' },
+    { priority: 'Low', type: '🌙 Night Route Review', route: 'R10 – Night Owl Service', hours: '02:00–04:00', reason: 'Critically low ridership (avg 6 passengers/trip). Consider demand-responsive minibus replacement 2–4 AM.', saving: '₹20K/month' },
+    { priority: 'Medium', type: '📊 Weekend Optimization', route: 'R04/R05/R09 – Metro Lines', hours: 'Weekend 10:00–16:00', reason: 'Weekend leisure peak 10 AM–3 PM requires 15% more frequency than current weekend timetable.', saving: '+₹18K/month revenue' },
+  ];
+
+  const container = document.getElementById('recoCards');
+  container.innerHTML = recommendations.map(r => `
+    <div class="reco-card ${r.priority.toLowerCase()}">
+      <div class="reco-priority priority-${r.priority.toLowerCase()}">● ${r.priority} Priority</div>
+      <div class="reco-title">${r.type}</div>
+      <div class="reco-route">${r.route} · <span style="color:var(--accent)">${r.hours}</span></div>
+      <div class="reco-detail">${r.reason}<br><br>💰 <strong style="color:var(--green)">${r.saving}</strong></div>
+    </div>
+  `).join('');
+})();
+
+// ─── Boarding Stops Chart ─────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('boardingStopsChart').getContext('2d');
+  const stops = [
+    { stop: 'Central Station', count: 52400 },
+    { stop: 'University', count: 38200 },
+    { stop: 'Business District', count: 34100 },
+    { stop: 'Stadium', count: 29800 },
+    { stop: 'Hospital', count: 28500 },
+    { stop: 'Market Square', count: 26700 },
+    { stop: 'Tech Hub', count: 22400 },
+    { stop: 'Shopping Mall', count: 20100 },
+    { stop: 'Airport Int\'l T1', count: 17600 },
+    { stop: 'Finance District', count: 15300 },
+  ];
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: stops.map(s => s.stop),
+      datasets: [{ label: 'Boardings', data: stops.map(s => s.count),
+        backgroundColor: stops.map((_, i) => `rgba(0,229,255,${1 - i * 0.07})`),
+        borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: gridOpts, ticks: { font: { size: 9 } } },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+})();
+
+// ─── Speed by Route Chart ─────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('speedChart').getContext('2d');
+  const speeds = DATA.route_efficiency.map(r => ({
+    route: r.route_id,
+    speed: r.route_type === 'Metro' ? 29 + Math.random() * 4 : 20 + Math.random() * 6,
+    type: r.route_type
+  }));
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: speeds.map(s => s.route),
+      datasets: [{ label: 'Avg Speed (km/h)', data: speeds.map(s => s.speed.toFixed(1)),
+        backgroundColor: speeds.map(s => s.type === 'Metro' ? '#7c3aed' : '#34d399'),
+        borderRadius: 5 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: gridOpts, min: 10, ticks: { callback: v => v + ' km/h', font: { size: 9 } } }
+      }
+    }
+  });
+})();
+
+</script>
+</body>
+</html>
